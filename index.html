@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Caja · Órdenes Pendientes</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ================= HEADER ================= -->
+<header class="app-header">
+  <div class="brand">
+    <i class="bi bi-cash-register"></i>
+    <span>Caja</span>
+  </div>
+  <div class="meta">
+    <span class="badge" id="connBadge">
+      <span class="dot"></span>
+      <i class="bi bi-wifi"></i>
+      <span id="connTxt">Online</span>
+    </span>
+    <span class="badge" id="refreshBadge">
+      <i class="bi bi-arrow-clockwise"></i>
+      <span id="refreshTxt">--:--</span>
+    </span>
+  </div>
+</header>
+
+<!-- ================= RESUMEN DEL DÍA ================= -->
+<section class="resumen">
+  <div class="resumen-card">
+    <div class="resumen-icon"><i class="bi bi-hourglass-split"></i></div>
+    <div class="resumen-info">
+      <span class="lbl">Pendientes</span>
+      <span class="val" id="rPendientes">0</span>
+    </div>
+  </div>
+  <div class="resumen-card">
+    <div class="resumen-icon acento"><i class="bi bi-cash-coin"></i></div>
+    <div class="resumen-info">
+      <span class="lbl">Por cobrar</span>
+      <span class="val" id="rPorCobrar">$0</span>
+    </div>
+  </div>
+  <div class="resumen-card">
+    <div class="resumen-icon verde"><i class="bi bi-check2-circle"></i></div>
+    <div class="resumen-info">
+      <span class="lbl">Cobradas hoy</span>
+      <span class="val" id="rCobradas">$0</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FILTROS ================= -->
+<div class="filtros">
+  <button class="filtro-btn active" data-filtro="pendientes">
+    <i class="bi bi-hourglass-split"></i> Pendientes
+  </button>
+  <button class="filtro-btn" data-filtro="cobradas">
+    <i class="bi bi-check2-circle"></i> Cobradas
+  </button>
+  <button class="filtro-btn" data-filtro="todas">
+    <i class="bi bi-list-ul"></i> Todas
+  </button>
+</div>
+
+<!-- ================= LISTA DE ÓRDENES ================= -->
+<main>
+  <div id="listaOrdenes"></div>
+</main>
+
+<!-- ================= PANEL DETALLE ================= -->
+<div class="overlay" id="overlayDetalle">
+  <div class="panel">
+    <div class="panel-head">
+      <h3><i class="bi bi-receipt-cutoff"></i> Detalle de la orden</h3>
+      <button id="btnCerrarDetalle"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="panel-body" id="detalleBody"></div>
+    <div class="panel-foot">
+      <div class="totales-panel">
+        <div class="row"><span>Artículos</span><span id="dArticulos">0</span></div>
+        <div class="row total"><span>TOTAL A PAGAR</span><span id="dTotal">$0</span></div>
+      </div>
+      <button class="btn-primary" id="btnMarcarCobrada">
+        <i class="bi bi-cash-coin"></i> Marcar como cobrada
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= TOAST ================= -->
+<div class="toast" id="toast"><i class="bi bi-check-circle-fill"></i> <span id="toastMsg"></span></div>
+
+<script src="script.js"></script>
+</body>
+</html>
