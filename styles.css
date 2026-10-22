@@ -64,6 +64,14 @@ header .meta .badge .dot{
 }
 header .meta .badge.offline .dot{background:var(--acento);box-shadow:0 0 0 2px rgba(232,178,58,.35);}
 
+header .meta .icon-btn{
+  background:rgba(255,255,255,.18);color:#fff;border:none;
+  padding:5px 10px;border-radius:20px;font:inherit;font-weight:600;
+  display:flex;align-items:center;gap:5px;cursor:pointer;transition:.18s;
+}
+header .meta .icon-btn:active{background:rgba(255,255,255,.32);}
+@media(max-width:480px){header .meta .icon-btn span{display:none;}}
+
 /* ================= RESUMEN ================= */
 .resumen{
   display:grid;
@@ -278,6 +286,48 @@ main{padding:0 12px;}
 }
 .totales-panel .row.total span:last-child{color:var(--marca);}
 
+/* ================= PAGO / CAMBIO ================= */
+.pago{display:flex;flex-direction:column;gap:8px;}
+.pago.oculto{display:none;}
+.pago-input{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+.pago-input .lbl{
+  font-size:.8rem;font-weight:700;color:var(--marca-profunda);
+  display:flex;align-items:center;gap:6px;
+}
+.pago-input .campo{
+  display:flex;align-items:center;gap:4px;
+  background:var(--superficie);border:2px solid var(--borde);
+  border-radius:var(--radio-sm);padding:6px 10px;
+  width:150px;transition:.18s;
+}
+.pago-input .campo:focus-within{border-color:var(--marca);}
+.pago-input .signo{font-weight:800;color:var(--acento);font-size:1.1rem;}
+.pago-input input{
+  border:none;outline:none;background:transparent;
+  width:100%;min-width:0;text-align:right;
+  font:inherit;font-size:1.2rem;font-weight:800;color:var(--marca-profunda);
+}
+.pago-input input:disabled{color:var(--texto-suave);}
+.pago-rapido{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+.pago-rapido[hidden]{display:none;}
+.pago-rapido button{
+  background:var(--superficie);border:1px solid var(--borde);
+  color:var(--marca-profunda);font-size:.82rem;font-weight:700;
+  padding:8px 4px;border-radius:var(--radio-sm);cursor:pointer;transition:.18s;
+}
+.pago-rapido button:active{background:var(--acento-claro);transform:scale(.97);}
+.pago-rapido button:disabled{opacity:.5;cursor:not-allowed;}
+.cambio{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 12px;border-radius:var(--radio-sm);
+  background:var(--superficie);border:1px dashed var(--borde);
+  color:var(--texto-suave);
+}
+.cambio .lbl{font-size:.8rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;}
+.cambio .val{font-size:1.5rem;font-weight:800;}
+.cambio.ok{background:#e8f5e9;border:1px solid var(--alerta);color:var(--alerta);}
+.cambio.falta{background:var(--acento-claro);border:1px solid var(--acento);color:var(--marca-profunda);}
+
 .btn-primary{
   background:var(--marca);color:#fff;border:none;
   border-radius:var(--radio-sm);padding:13px;font-size:.95rem;font-weight:800;
@@ -290,6 +340,45 @@ main{padding:0 12px;}
   background:var(--alerta);cursor:default;
 }
 .btn-primary.cobrada:active{transform:none;background:var(--alerta);}
+
+/* ================= ESTADÍSTICAS ================= */
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;}
+.stat-card{
+  background:var(--superficie-alt);border-radius:var(--radio-sm);
+  padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;
+}
+.stat-card .lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.4px;font-weight:700;color:var(--texto-suave);}
+.stat-card .val{font-size:1.15rem;font-weight:800;color:var(--marca-profunda);}
+.stat-card .sub{font-size:.72rem;color:var(--texto-suave);font-weight:600;}
+.stat-card.verde .val{color:var(--alerta);}
+
+.stats-sec{margin-bottom:18px;}
+.stats-sec h4{
+  margin:0 0 8px;font-size:.88rem;color:var(--marca-profunda);
+  display:flex;align-items:center;gap:6px;
+}
+.stats-sec h4 i{color:var(--marca);}
+.stats-nota{font-size:.72rem;color:var(--texto-suave);margin:-4px 0 8px;}
+.stats-vacio{font-size:.8rem;color:var(--texto-suave);padding:10px 0;}
+
+.destacado{
+  display:flex;align-items:center;gap:10px;
+  background:var(--acento-claro);color:var(--marca-profunda);
+  border-radius:var(--radio-sm);padding:10px 12px;margin-bottom:10px;
+  font-size:.82rem;font-weight:700;line-height:1.3;
+}
+.destacado i{font-size:1.3rem;color:var(--marca);}
+.destacado b{font-weight:800;}
+.destacado.menos{background:var(--superficie-alt);}
+
+.barras{display:flex;flex-direction:column;gap:5px;}
+.barra{display:grid;grid-template-columns:92px 1fr 34px;align-items:center;gap:8px;font-size:.76rem;}
+.barra .nom{font-weight:700;color:var(--texto);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.barra .pista{background:var(--superficie-alt);border-radius:6px;height:14px;overflow:hidden;}
+.barra .rel{display:block;height:100%;background:var(--borde);border-radius:6px;min-width:2px;}
+.barra.pico .rel{background:var(--marca);}
+.barra.pico .nom{color:var(--marca);}
+.barra .num{text-align:right;font-weight:800;color:var(--marca-profunda);}
 
 /* ================= ESTADO VACÍO ================= */
 .empty{

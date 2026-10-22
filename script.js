@@ -15,9 +15,12 @@ const REFRESH_INTERVAL = 5000;
 let ordenes = [];              // Todas las órdenes
 let filtroActivo = "pendientes";
 let ordenSeleccionada = null;
+let cobroReciente = null;      // { uid, recibido, cambio } del último cobro hecho en esta sesión
 
 const $ = (s, ctx=document) => ctx.querySelector(s);
 const money = n => "$" + Number(n).toLocaleString("es-MX");
+const money2 = n => "$" + Number(n).toLocaleString("es-MX",{minimumFractionDigits:0, maximumFractionDigits:2});
+const redondear = n => Math.round(n * 100) / 100;
 
 function toast(msg, tipo="ok"){
   const t = $("#toast");
@@ -86,6 +89,7 @@ async function refrescar(silencioso = false){
       cerrarDetalle();
     }
   }
+  if($("#overlayStats").classList.contains("open")) renderStats();
   if(!silencioso) toast("Órdenes actualizadas");
 }
 
@@ -198,6 +202,10 @@ function ordenCardHTML(o){
    🔍 DETALLE
    ============================================================ */
 function abrirDetalle(o){
+  if(!ordenSeleccionada || ordenSeleccionada.uid !== o.uid){
+    $("#inputRecibido").value = "";
+  }
+  if(cobroReciente && cobroReciente.uid !== o.uid) cobroReciente = null;
   ordenSeleccionada = o;
   renderDetalle(o);
   $("#overlayDetalle").classList.add("open");
@@ -249,6 +257,69 @@ function renderDetalle(o){
     btn.classList.remove("cobrada");
     btn.innerHTML = `<i class="bi bi-cash-coin"></i> Marcar como cobrada`;
   }
+  actualizarCambio();
+}
+
+/* ============================================================
+   💵 EFECTIVO RECIBIDO Y CAMBIO
+   ============================================================ */
+/* Devuelve el monto escrito (en pesos) o null si está vacío/inválido */
+function leerRecibido(){
+  const txt = $("#inputRecibido").value.replace(/[$,\s]/g, "");
+  if(txt === "") return null;
+  const n = Number(txt);
+  return isFinite(n) && n >= 0 ? redondear(n) : null;
+}
+
+function actualizarCambio(){
+  const o = ordenSeleccionada;
+  if(!o) return;
+
+  const box = $("#pagoBox");
+  const input = $("#inputRecibido");
+  const cambioBox = $("#cambioBox");
+  const btn = $("#btnMarcarCobrada");
+  const cobrada = o.estado === "cobrada";
+
+  // Orden ya cobrada: solo mostrar el cambio del cobro hecho en esta sesión
+  if(cobrada){
+    const c = cobroReciente && cobroReciente.uid === o.uid ? cobroReciente : null;
+    box.classList.toggle("oculto", !c);
+    input.disabled = true;
+    $("#pagoRapido").hidden = true;
+    if(c){
+      input.value = String(c.recibido);
+      cambioBox.className = "cambio ok";
+      $("#cambioLbl").textContent = "Entregar cambio";
+      $("#cambioVal").textContent = money2(c.cambio);
+    }
+    return;
+  }
+
+  box.classList.remove("oculto");
+  input.disabled = false;
+  $("#pagoRapido").hidden = false;
+
+  const recibido = leerRecibido();
+  if(recibido === null){
+    cambioBox.className = "cambio";
+    $("#cambioLbl").textContent = "Cambio";
+    $("#cambioVal").textContent = "$0";
+    btn.disabled = false;
+    return;
+  }
+
+  const diff = redondear(recibido - o.total);
+  btn.disabled = diff < 0;
+  if(diff < 0){
+    cambioBox.className = "cambio falta";
+    $("#cambioLbl").textContent = "Faltan";
+    $("#cambioVal").textContent = money2(-diff);
+  }else{
+    cambioBox.className = "cambio ok";
+    $("#cambioLbl").textContent = "Entregar cambio";
+    $("#cambioVal").textContent = money2(diff);
+  }
 }
 
 /* ============================================================
@@ -258,6 +329,11 @@ async function marcarCobrada(){
   if(!ordenSeleccionada) return;
   const orden = ordenSeleccionada;
   const btn = $("#btnMarcarCobrada");
+  if(btn.disabled) return;
+
+  // Capturar el pago antes de que el re-render bloquee el campo
+  const recibido = leerRecibido();
+  const cambio = recibido === null ? null : redondear(recibido - orden.total);
   btn.disabled = true;
   btn.innerHTML = `<i class="bi bi-hourglass-split"></i> Guardando...`;
 
@@ -269,12 +345,15 @@ async function marcarCobrada(){
   // Enviar al backend (Apps Script debe soportar acción "cobrar")
   const ok = await notificarCobro(orden);
 
+  cobroReciente = recibido === null ? null : { uid: orden.uid, recibido, cambio };
+
   renderResumen();
   renderLista();
   ordenSeleccionada = ordenes[idx];
   renderDetalle(ordenSeleccionada);
 
-  toast(ok ? "Orden marcada como cobrada ✓" : "Cobrada localmente (sin conexión)");
+  const msgCambio = cambio !== null ? ` · Cambio ${money2(cambio)}` : "";
+  toast((ok ? "Orden marcada como cobrada ✓" : "Cobrada localmente (sin conexión)") + msgCambio);
 }
 
 async function notificarCobro(orden){
@@ -291,6 +370,165 @@ async function notificarCobro(orden){
     console.error("[Caja] Error al notificar cobro:", err);
     return false;
   }
+}
+
+/* ============================================================
+   📈 ESTADÍSTICAS
+   ------------------------------------------------------------
+   Afluencia y productos se calculan sobre el historial de
+   órdenes COBRADAS (1 orden = 1 visita). Los totales generales
+   incluyen todas las órdenes tomadas.
+   ============================================================ */
+const DIAS_SEMANA = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+
+function abrirStats(){
+  renderStats();
+  $("#overlayStats").classList.add("open");
+}
+
+function cerrarStats(){
+  $("#overlayStats").classList.remove("open");
+}
+
+function calcularStats(){
+  const cobradas = ordenes.filter(o => o.estado === "cobrada");
+  const porDia = Array(7).fill(0);   // 0 = lunes
+  const porHora = Array(24).fill(0);
+  const productos = new Map();       // clave en minúsculas → { nombre, qty }
+
+  cobradas.forEach(o=>{
+    const d = new Date(o.timestamp);
+    porDia[(d.getDay() + 6) % 7]++;
+    porHora[d.getHours()]++;
+    o.items.forEach(i=>{
+      const nombre = String(i.nombre ?? "").trim();
+      const qty = Number(i.qty) || 0;
+      if(!nombre || qty <= 0) return;
+      const k = nombre.toLowerCase();
+      const p = productos.get(k) || { nombre, qty: 0 };
+      p.qty += qty;
+      productos.set(k, p);
+    });
+  });
+
+  return {
+    todas: ordenes,
+    cobradas,
+    pendientes: ordenes.filter(o => o.estado === "pendiente"),
+    porDia,
+    porHora,
+    ranking: [...productos.values()].sort((a,b)=> b.qty - a.qty || a.nombre.localeCompare(b.nombre, "es"))
+  };
+}
+
+const sumaTotal = lista => lista.reduce((s,o)=>s+o.total, 0);
+
+/* Nombres de los valores máximos (o mínimos) de un arreglo, con empates */
+function extremos(arr, etiqueta, max = true){
+  const vals = arr.filter(v => v > 0);
+  if(!vals.length) return null;
+  const objetivo = max ? Math.max(...vals) : Math.min(...vals);
+  return {
+    valor: objetivo,
+    nombres: arr.map((v,i)=> v === objetivo ? etiqueta(i) : null).filter(Boolean)
+  };
+}
+
+const etiquetaHora = h => `${String(h).padStart(2,"0")}:00–${String(h).padStart(2,"0")}:59`;
+
+function barrasHTML(filas, maximo){
+  return `<div class="barras">${filas.map(f=>`
+    <div class="barra ${f.pico ? "pico" : ""}">
+      <span class="nom" title="${escapeHtml(f.nombre)}">${escapeHtml(f.nombre)}</span>
+      <span class="pista"><span class="rel" style="width:${maximo ? (f.valor / maximo * 100) : 0}%"></span></span>
+      <span class="num">${f.valor}</span>
+    </div>`).join("")}</div>`;
+}
+
+function renderStats(){
+  const s = calcularStats();
+  const hayCobradas = s.cobradas.length > 0;
+  const plural = (n, a, b) => n === 1 ? a : b;
+
+  // --- Día de la semana ---
+  const diaTop = extremos(s.porDia, i => DIAS_SEMANA[i]);
+  const maxDia = Math.max(...s.porDia);
+  const diasHTML = hayCobradas ? `
+    <div class="destacado"><i class="bi bi-calendar-check"></i>
+      <span>Día más concurrido: <b>${escapeHtml(diaTop.nombres.join(" / "))}</b>
+      (${diaTop.valor} ${plural(diaTop.valor, "orden", "órdenes")})</span></div>
+    ${barrasHTML(DIAS_SEMANA.map((n,i)=>({ nombre:n, valor:s.porDia[i], pico:s.porDia[i] === maxDia })), maxDia)}`
+    : `<div class="stats-vacio">Aún no hay órdenes cobradas.</div>`;
+
+  // --- Horas pico (solo el rango de horas con actividad) ---
+  const horasConDatos = s.porHora.map((v,h)=> v > 0 ? h : -1).filter(h => h >= 0);
+  const horaTop = extremos(s.porHora, etiquetaHora);
+  const maxHora = Math.max(...s.porHora);
+  let horasHTML = `<div class="stats-vacio">Aún no hay órdenes cobradas.</div>`;
+  if(hayCobradas){
+    const desde = horasConDatos[0], hasta = horasConDatos[horasConDatos.length - 1];
+    const filas = [];
+    for(let h = desde; h <= hasta; h++){
+      filas.push({ nombre: etiquetaHora(h), valor: s.porHora[h], pico: s.porHora[h] === maxHora });
+    }
+    horasHTML = `
+      <div class="destacado"><i class="bi bi-clock-history"></i>
+        <span>Hora pico: <b>${escapeHtml(horaTop.nombres.join(" / "))}</b>
+        (${horaTop.valor} ${plural(horaTop.valor, "orden", "órdenes")})</span></div>
+      ${barrasHTML(filas, maxHora)}`;
+  }
+
+  // --- Productos ---
+  let productosHTML = `<div class="stats-vacio">Aún no hay productos cobrados.</div>`;
+  if(s.ranking.length){
+    const maxQty = s.ranking[0].qty;
+    const minQty = s.ranking[s.ranking.length - 1].qty;
+    const masPedidos = s.ranking.filter(p => p.qty === maxQty).map(p => p.nombre);
+    const menosPedidos = s.ranking.filter(p => p.qty === minQty).map(p => p.nombre);
+    productosHTML = `
+      <div class="destacado"><i class="bi bi-trophy-fill"></i>
+        <span>Más pedido: <b>${escapeHtml(masPedidos.join(" / "))}</b> (${maxQty} ${plural(maxQty, "pieza", "piezas")})</span></div>
+      <div class="destacado menos"><i class="bi bi-arrow-down-circle"></i>
+        <span>Menos pedido: <b>${escapeHtml(menosPedidos.join(" / "))}</b> (${minQty} ${plural(minQty, "pieza", "piezas")})</span></div>
+      <div class="stats-nota">Ranking de todos los productos, de mayor a menor cantidad.</div>
+      ${barrasHTML(s.ranking.map(p => ({ nombre:p.nombre, valor:p.qty, pico:p.qty === maxQty })), maxQty)}`;
+  }
+
+  $("#statsBody").innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card">
+        <span class="lbl">Órdenes tomadas</span>
+        <span class="val">${s.todas.length}</span>
+        <span class="sub">${money2(sumaTotal(s.todas))} en total</span>
+      </div>
+      <div class="stat-card verde">
+        <span class="lbl">Total cobrado</span>
+        <span class="val">${money2(sumaTotal(s.cobradas))}</span>
+        <span class="sub">${s.cobradas.length} ${plural(s.cobradas.length, "orden cobrada", "órdenes cobradas")}</span>
+      </div>
+      <div class="stat-card" style="grid-column:1/-1">
+        <span class="lbl">Por cobrar</span>
+        <span class="val">${money2(sumaTotal(s.pendientes))}</span>
+        <span class="sub">${s.pendientes.length} ${plural(s.pendientes.length, "orden pendiente", "órdenes pendientes")}</span>
+      </div>
+    </div>
+
+    <section class="stats-sec">
+      <h4><i class="bi bi-calendar-week"></i> Afluencia por día de la semana</h4>
+      <div class="stats-nota">Órdenes cobradas por día (cada orden cuenta como un cliente).</div>
+      ${diasHTML}
+    </section>
+
+    <section class="stats-sec">
+      <h4><i class="bi bi-clock"></i> Horas pico</h4>
+      <div class="stats-nota">Órdenes cobradas por hora del día.</div>
+      ${horasHTML}
+    </section>
+
+    <section class="stats-sec">
+      <h4><i class="bi bi-basket"></i> Productos más y menos pedidos</h4>
+      ${productosHTML}
+    </section>`;
 }
 
 /* ============================================================
@@ -330,8 +568,32 @@ function init(){
     if(e.target.id === "overlayDetalle") cerrarDetalle();
   });
 
+  // Estadísticas
+  $("#btnStats").addEventListener("click", abrirStats);
+  $("#btnCerrarStats").addEventListener("click", cerrarStats);
+  $("#overlayStats").addEventListener("click", e=>{
+    if(e.target.id === "overlayStats") cerrarStats();
+  });
+
   // Marcar cobrada
   $("#btnMarcarCobrada").addEventListener("click", marcarCobrada);
+
+  // Efectivo recibido: solo dígitos y punto, recalcula el cambio al escribir
+  const inputRecibido = $("#inputRecibido");
+  inputRecibido.addEventListener("input", ()=>{
+    inputRecibido.value = inputRecibido.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+    actualizarCambio();
+  });
+  inputRecibido.addEventListener("keydown", e=>{
+    if(e.key === "Enter") marcarCobrada();
+  });
+  $("#pagoRapido").addEventListener("click", e=>{
+    const b = e.target.closest("button[data-monto]");
+    if(!b || !ordenSeleccionada) return;
+    const m = b.dataset.monto === "exacto" ? ordenSeleccionada.total : b.dataset.monto;
+    inputRecibido.value = String(m);
+    actualizarCambio();
+  });
 
   // Conexión
   window.addEventListener("online", actualizarConexion);

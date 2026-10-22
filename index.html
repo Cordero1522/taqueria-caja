@@ -16,6 +16,10 @@
     <span>Caja</span>
   </div>
   <div class="meta">
+    <button class="icon-btn" id="btnStats" aria-label="Estadísticas">
+      <i class="bi bi-bar-chart-line-fill"></i>
+      <span>Estadísticas</span>
+    </button>
     <span class="badge" id="connBadge">
       <span class="dot"></span>
       <i class="bi bi-wifi"></i>
@@ -84,10 +88,42 @@
         <div class="row"><span>Artículos</span><span id="dArticulos">0</span></div>
         <div class="row total"><span>TOTAL A PAGAR</span><span id="dTotal">$0</span></div>
       </div>
+      <div class="pago" id="pagoBox">
+        <label class="pago-input" for="inputRecibido">
+          <span class="lbl"><i class="bi bi-wallet2"></i> Efectivo recibido</span>
+          <span class="campo">
+            <span class="signo">$</span>
+            <input type="text" id="inputRecibido" inputmode="decimal" autocomplete="off" placeholder="0">
+          </span>
+        </label>
+        <div class="pago-rapido" id="pagoRapido">
+          <button type="button" data-monto="exacto">Exacto</button>
+          <button type="button" data-monto="50">$50</button>
+          <button type="button" data-monto="100">$100</button>
+          <button type="button" data-monto="200">$200</button>
+          <button type="button" data-monto="500">$500</button>
+          <button type="button" data-monto="1000">$1,000</button>
+        </div>
+        <div class="cambio" id="cambioBox">
+          <span class="lbl" id="cambioLbl">Cambio</span>
+          <span class="val" id="cambioVal">$0</span>
+        </div>
+      </div>
       <button class="btn-primary" id="btnMarcarCobrada">
         <i class="bi bi-cash-coin"></i> Marcar como cobrada
       </button>
     </div>
+  </div>
+</div>
+
+<!-- ================= PANEL ESTADÍSTICAS ================= -->
+<div class="overlay" id="overlayStats">
+  <div class="panel">
+    <div class="panel-head">
+      <h3><i class="bi bi-bar-chart-line-fill"></i> Estadísticas</h3>
+      <button id="btnCerrarStats"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="panel-body" id="statsBody"></div>
   </div>
 </div>
 
