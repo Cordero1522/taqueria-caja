@@ -376,10 +376,31 @@ async function notificarCobro(orden){
    📈 ESTADÍSTICAS
    ------------------------------------------------------------
    Afluencia y productos se calculan sobre el historial de
-   órdenes COBRADAS (1 orden = 1 visita). Los totales generales
-   incluyen todas las órdenes tomadas.
+   órdenes COBRADAS (1 orden = 1 visita) hechas dentro del horario
+   laboral; las de fuera de horario se ignoran. Los totales
+   generales incluyen todas las órdenes tomadas.
    ============================================================ */
 const DIAS_SEMANA = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+
+/* Horario: abre 6:00 pm. Cierra 1:00 am (turnos de lunes a viernes)
+   o 12:00 am (turnos de sábado y domingo). Las horas pasadas la
+   medianoche pertenecen al turno del día anterior. */
+const HORA_APERTURA = 18;
+const HORA_CIERRE_MADRUGADA = 1;   // aplica solo a turnos lun–vie
+const HORAS_SERVICIO = [18,19,20,21,22,23,0];
+
+/* Devuelve { dia (0 = lunes del turno), hora } o null si está fuera de horario */
+function turnoDe(ts){
+  const d = new Date(ts);
+  const h = d.getHours();
+  const dow = (d.getDay() + 6) % 7;
+  if(h >= HORA_APERTURA) return { dia: dow, hora: h };
+  if(h < HORA_CIERRE_MADRUGADA){
+    const dia = (dow + 6) % 7;
+    return dia <= 4 ? { dia, hora: h } : null;
+  }
+  return null;
+}
 
 function abrirStats(){
   renderStats();
@@ -396,10 +417,14 @@ function calcularStats(){
   const porHora = Array(24).fill(0);
   const productos = new Map();       // clave en minúsculas → { nombre, qty }
 
+  let enHorario = 0;
+
   cobradas.forEach(o=>{
-    const d = new Date(o.timestamp);
-    porDia[(d.getDay() + 6) % 7]++;
-    porHora[d.getHours()]++;
+    const t = turnoDe(o.timestamp);
+    if(!t) return;                   // fuera de horario laboral: se ignora
+    enHorario++;
+    porDia[t.dia]++;
+    porHora[t.hora]++;
     o.items.forEach(i=>{
       const nombre = String(i.nombre ?? "").trim();
       const qty = Number(i.qty) || 0;
@@ -414,6 +439,7 @@ function calcularStats(){
   return {
     todas: ordenes,
     cobradas,
+    enHorario,
     pendientes: ordenes.filter(o => o.estado === "pendiente"),
     porDia,
     porHora,
@@ -447,7 +473,9 @@ function barrasHTML(filas, maximo){
 
 function renderStats(){
   const s = calcularStats();
-  const hayCobradas = s.cobradas.length > 0;
+  const hayCobradas = s.enHorario > 0;
+  const sinDatos = s.cobradas.length ? "Aún no hay órdenes cobradas dentro del horario." : "Aún no hay órdenes cobradas.";
+  const fuera = s.cobradas.length - s.enHorario;
   const plural = (n, a, b) => n === 1 ? a : b;
 
   // --- Día de la semana ---
@@ -458,19 +486,14 @@ function renderStats(){
       <span>Día más concurrido: <b>${escapeHtml(diaTop.nombres.join(" / "))}</b>
       (${diaTop.valor} ${plural(diaTop.valor, "orden", "órdenes")})</span></div>
     ${barrasHTML(DIAS_SEMANA.map((n,i)=>({ nombre:n, valor:s.porDia[i], pico:s.porDia[i] === maxDia })), maxDia)}`
-    : `<div class="stats-vacio">Aún no hay órdenes cobradas.</div>`;
+    : `<div class="stats-vacio">${sinDatos}</div>`;
 
-  // --- Horas pico (solo el rango de horas con actividad) ---
-  const horasConDatos = s.porHora.map((v,h)=> v > 0 ? h : -1).filter(h => h >= 0);
+  // --- Horas pico (de la apertura al cierre, en orden de servicio) ---
   const horaTop = extremos(s.porHora, etiquetaHora);
   const maxHora = Math.max(...s.porHora);
-  let horasHTML = `<div class="stats-vacio">Aún no hay órdenes cobradas.</div>`;
+  let horasHTML = `<div class="stats-vacio">${sinDatos}</div>`;
   if(hayCobradas){
-    const desde = horasConDatos[0], hasta = horasConDatos[horasConDatos.length - 1];
-    const filas = [];
-    for(let h = desde; h <= hasta; h++){
-      filas.push({ nombre: etiquetaHora(h), valor: s.porHora[h], pico: s.porHora[h] === maxHora });
-    }
+    const filas = HORAS_SERVICIO.map(h => ({ nombre: etiquetaHora(h), valor: s.porHora[h], pico: s.porHora[h] === maxHora }));
     horasHTML = `
       <div class="destacado"><i class="bi bi-clock-history"></i>
         <span>Hora pico: <b>${escapeHtml(horaTop.nombres.join(" / "))}</b>
@@ -479,7 +502,7 @@ function renderStats(){
   }
 
   // --- Productos ---
-  let productosHTML = `<div class="stats-vacio">Aún no hay productos cobrados.</div>`;
+  let productosHTML = `<div class="stats-vacio">${sinDatos}</div>`;
   if(s.ranking.length){
     const maxQty = s.ranking[0].qty;
     const minQty = s.ranking[s.ranking.length - 1].qty;
@@ -515,13 +538,15 @@ function renderStats(){
 
     <section class="stats-sec">
       <h4><i class="bi bi-calendar-week"></i> Afluencia por día de la semana</h4>
-      <div class="stats-nota">Órdenes cobradas por día (cada orden cuenta como un cliente).</div>
+      <div class="stats-nota">Órdenes cobradas por día de turno (cada orden cuenta como un cliente).
+        Horario: 6:00 pm a 1:00 am (sáb y dom hasta 12:00 am).
+        ${fuera > 0 ? `${fuera} ${plural(fuera, "orden fuera de horario no se incluye", "órdenes fuera de horario no se incluyen")}.` : ""}</div>
       ${diasHTML}
     </section>
 
     <section class="stats-sec">
       <h4><i class="bi bi-clock"></i> Horas pico</h4>
-      <div class="stats-nota">Órdenes cobradas por hora del día.</div>
+      <div class="stats-nota">Órdenes cobradas por hora de servicio.</div>
       ${horasHTML}
     </section>
 
